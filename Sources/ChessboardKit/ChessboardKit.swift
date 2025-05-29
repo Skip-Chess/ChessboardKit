@@ -10,7 +10,11 @@
 // See the LICENSE file for more information.
 //
 
+#if canImport(SkipFuseUI)
+import SkipFuseUI
+#else
 import SwiftUI
+#endif
 
 import ChessKit
 
@@ -274,9 +278,7 @@ public class ChessboardModel {
     }
 }
 
-private struct MovingPieceView: View {
-    var animation: Namespace.ID
-    
+struct MovingPieceView: View {
     @Environment(ChessboardModel.self) var chessboardModel
     
     @State var position: CGPoint = .zero
@@ -284,8 +286,7 @@ private struct MovingPieceView: View {
     var body: some View {
         Group {
             if let movingPiece = chessboardModel.movingPiece {
-                ChessPieceView(animation: animation,
-                               piece: movingPiece.piece,
+                ChessPieceView(piece: movingPiece.piece,
                                square: BoardSquare(row: movingPiece.from.row, column: movingPiece.from.column),
                                isMovingPiece: true)
                 .position(position)
@@ -293,12 +294,14 @@ private struct MovingPieceView: View {
                     position = CGPoint(x: chessboardModel.size / 16 + chessboardModel.size / 8 * CGFloat(chessboardModel.shouldFlipBoard ? 7 - movingPiece.from.column : movingPiece.from.column),
                                        y: chessboardModel.size / 16 + chessboardModel.size / 8 * CGFloat(chessboardModel.shouldFlipBoard ? movingPiece.from.row : 7 - movingPiece.from.row))
                     
+                    #if !os(Android)
                     withAnimation(.easeInOut(duration: 0.5)) {
                         position = CGPoint(x: chessboardModel.size / 16 + chessboardModel.size / 8 * CGFloat(chessboardModel.shouldFlipBoard ? 7 - movingPiece.to.column : movingPiece.to.column),
                                            y: chessboardModel.size / 16 + chessboardModel.size / 8 * CGFloat(chessboardModel.shouldFlipBoard ? movingPiece.to.row : 7 - movingPiece.to.row))
                     } completion: {
                         chessboardModel.movingPiece = nil
                     }
+                    #endif
                 }
             }
         }
@@ -307,8 +310,6 @@ private struct MovingPieceView: View {
 
 public struct Chessboard: View {
     public var chessboardModel: ChessboardModel
-    
-    @Namespace private var animation
     
     public init(chessboardModel: ChessboardModel) {
         self.chessboardModel = chessboardModel
@@ -322,7 +323,7 @@ public struct Chessboard: View {
                 squaresView
                 piecesView
                 
-                MovingPieceView(animation: animation)
+                MovingPieceView()
                 
                 if chessboardModel.showPromotionPicker {
                     promotionPickerView
@@ -360,11 +361,32 @@ public struct Chessboard: View {
     
     var inWaitingView: some View {
         ZStack {
-            Color.clear.contentShape(Rectangle())
+            Color.clear
+                #if !os(Android)
+                .contentShape(Rectangle())
                 .ignoresSafeArea()
+                #endif
         }
     }
-    
+
+    func performPromotion(piece: String) {
+        guard let sourceSquare = chessboardModel.promotionSourceSquare,
+              let targetSquare = chessboardModel.promotionTargetSquare,
+              let lan = chessboardModel.promotionLan
+        else {
+            chessboardModel.absentePromotionPicker()
+            return
+        }
+
+        let promotedLan = lan + piece.uppercased()
+        let promotedMove = Move(string: promotedLan)
+        let isLegal = chessboardModel.game.legalMoves.contains(promotedMove)
+
+        chessboardModel.onMove(promotedMove, isLegal, sourceSquare, targetSquare, promotedLan, PieceKind(rawValue: piece))
+
+        chessboardModel.absentePromotionPicker()
+    }
+
     var promotionPickerView: some View {
         ZStack {
             Color.white.opacity(0.5)
@@ -374,21 +396,10 @@ public struct Chessboard: View {
                 HStack(spacing: 20) {
                     ForEach(["q", "r", "b", "n"], id: \.self) { (piece: String) in
                         Button {
-                            guard let sourceSquare = chessboardModel.promotionSourceSquare,
-                                  let targetSquare = chessboardModel.promotionTargetSquare,
-                                  let lan = chessboardModel.promotionLan
-                            else {
-                                chessboardModel.absentePromotionPicker()
-                                return
-                            }
-                            
-                            let promotedLan = lan + piece.uppercased()
-                            let promotedMove = Move(string: promotedLan)
-                            let isLegal = chessboardModel.game.legalMoves.contains(promotedMove)
-                            
-                            chessboardModel.onMove(promotedMove, isLegal, sourceSquare, targetSquare, promotedLan, PieceKind(rawValue: piece))
-                            
-                            chessboardModel.absentePromotionPicker()
+                            // TODO: fix data race error
+                            #if !os(Android)
+                            performPromotion(piece: piece)
+                            #endif
                         } label: {
                             let imageName = "\(chessboardModel.perspective == PieceColor.white ? "w" : "b")\(String(describing: piece).uppercased())"
                             
@@ -399,13 +410,17 @@ public struct Chessboard: View {
                                             .resizable()
                                             .frame(width: chessboardModel.size / 8,
                                                     height: chessboardModel.size / 8)
+                                            #if !os(Android)
                                             .contentShape(Rectangle())
+                                            #endif
                                     } else if phase.error != nil {
                                         Text("\(piece)")
                                             .foregroundStyle(piece == "w" ? Color.white : Color.black)
                                             .font(.system(size: 18))
                                             .scaledToFit()
+                                            #if !os(Android)
                                             .contentShape(Rectangle())
+                                            #endif
                                     } else {
                                         ProgressView()
                                             .scaleEffect(0.85)
@@ -421,7 +436,9 @@ public struct Chessboard: View {
                 }
             }
             .padding()
+            #if !os(Android)
             .background(.ultraThinMaterial)
+            #endif
             .cornerRadius(20)
             .shadow(radius: 5)
             .padding(.horizontal, 20)
@@ -510,8 +527,7 @@ public struct Chessboard: View {
                 let isMoving = chessboardModel.movingPiece?.from == BoardSquare(row: row, column: column) ||
                                chessboardModel.movingPiece?.to == BoardSquare(row: row, column: column)
                 
-                ChessPieceView(animation: animation,
-                               piece: piece,
+                ChessPieceView(piece: piece,
                                square: BoardSquare(row: row, column: column))
                 .opacity(isMoving ? 0.0 : 1.0)
                 .animation(nil, value: isMoving)
@@ -527,7 +543,7 @@ public struct Chessboard: View {
     }
 }
 
-private struct ChessSquareView: View {
+struct ChessSquareView: View {
     @Environment(ChessboardModel.self) var chessboardModel
     
     var piece: Piece?
@@ -560,10 +576,14 @@ private struct ChessSquareView: View {
     
     var body: some View {
         ZStack {
-            Color.clear.contentShape(Rectangle())
+            Color.clear
+                #if !os(Android)
+                .contentShape(Rectangle())
+                #endif
         }
         .font(.system(size: chessboardModel.size / 8 * 0.75))
         .frame(width: chessboardModel.size / 8, height: chessboardModel.size / 8)
+        #if !os(Android)
         .modifier {
             if let dropTarget = chessboardModel.dropTarget,
                !isDragging &&
@@ -585,14 +605,13 @@ private struct ChessSquareView: View {
                 }
             } else { $0 }
         }
+        #endif
     }
 }
 
-private struct ChessPieceView: View {
+struct ChessPieceView: View {
     @Environment(ChessboardModel.self) var chessboardModel
-    
-    var animation: Namespace.ID
-    
+
     var piece: Piece?
     var square: BoardSquare
     var isMovingPiece = false
@@ -636,21 +655,28 @@ private struct ChessPieceView: View {
                             .resizable()
                             .scaledToFit()
                             .scaleEffect(0.85)
+                            #if !os(Android)
                             .contentShape(Rectangle())
+                            #endif
                     } else if phase.error != nil {
                         Text("\(piece)")
                             .foregroundStyle(piece.color == PieceColor.white ? Color.white : Color.black)
                             .font(.system(size: 18))
                             .scaledToFit()
                             .scaleEffect(0.85)
+                            #if !os(Android)
                             .contentShape(Rectangle())
+                            #endif
                     } else {
                         ProgressView()
                             .scaleEffect(0.85)
                     }
                 }
             } else {
-                Color.clear.contentShape(Rectangle())
+                Color.clear
+                    #if !os(Android)
+                    .contentShape(Rectangle())
+                    #endif
             }
         }
         .zIndex(zIndex)
@@ -748,9 +774,11 @@ private struct ChessPieceView: View {
                 
                 if let piece, piece.color != chessboardModel.turn,
                    !chessboardModel.allowOpponentMove && piece.color != chessboardModel.perspective {
+                    #if !os(Android)
                     withAnimation {
                         offset = .zero
                     }
+                    #endif
                     return
                 }
                 
@@ -768,10 +796,12 @@ private struct ChessPieceView: View {
                 let move = Move(string: lan)
                 let isLegal = chessboardModel.game.legalMoves.contains(move)
                 
+                #if !os(Android)
                 withAnimation {
                     offset = .zero
                 }
-                
+                #endif
+
                 guard let selectedPiece = chessboardModel.game.position.board[square.row + square.column * 8]
                 else { return }
                 

@@ -10,13 +10,21 @@ let package = Package(
             name: "ChessboardKit",
             targets: ["ChessboardKit"]),
     ],
-    dependencies: [.package(url: "https://github.com/aperechnev/ChessKit", from: "1.3.7")],
+    dependencies: [
+        .package(url: "https://source.skip.tools/skip.git", from: "1.5.18"),
+        .package(url: "https://source.skip.tools/skip-fuse-ui.git", "0.0.0"..<"2.0.0"),
+        .package(url: "https://github.com/Skip-Chess/ChessKit.git", branch: "main"),
+    ],
     targets: [
         .target(name: "ChessboardKit",
-                dependencies: ["ChessKit"],
+                dependencies: [
+                    .product(name: "SkipFuseUI", package: "skip-fuse-ui"),
+                    .product(name: "ChessKit", package: "ChessKit")
+                ],
                 resources: [
-                    .process("Assets/Pieces/uscf")
-                ])
+                    .process("Resources")
+                ],
+                plugins: [.plugin(name: "skipstone", package: "skip")])
     ],
     swiftLanguageModes: [.v5, .v6]
 )

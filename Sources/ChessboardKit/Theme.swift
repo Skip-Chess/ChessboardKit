@@ -11,7 +11,11 @@
 //
 
 import Foundation
+#if canImport(SkipFuseUI)
+import SkipFuseUI
+#else
 import SwiftUI
+#endif
 
 public protocol ChessboardColorScheme: Sendable {
     var light: Color { get }
